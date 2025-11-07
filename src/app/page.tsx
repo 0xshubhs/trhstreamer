@@ -4,26 +4,77 @@ import { useState } from 'react';
 import MagnetInputForm from './components/MagnetInputForm';
 import TorrentPlayerBackend from './components/TorrentPlayerBackend';
 import HlsPlayer from './components/HlsPlayer';
-import DownloadButton from './components/DownloadButton';
+
+interface StreamInfo {
+  service: 'nextjs' | 'nodejs';
+  streamUrl: string;
+  downloadUrl?: string;
+  fileSize?: number;
+  fileSizeFormatted?: string;
+  fileName?: string;
+  message?: string;
+}
 
 export default function Home() {
   const [activeStream, setActiveStream] = useState<{
     url: string;
     type: 'magnet' | 'hls';
+    streamInfo?: StreamInfo;
   } | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
   console.log('=== PAGE RENDER ===');
   console.log('Active stream:', activeStream);
   console.log('Error:', error);
 
-  const handleSubmit = (url: string, type: 'magnet' | 'hls') => {
+  const handleSubmit = async (url: string, type: 'magnet' | 'hls') => {
     console.log('=== PAGE: handleSubmit called ===');
     console.log('URL:', url);
     console.log('Type:', type);
+    
     setError('');
-    setActiveStream({ url, type });
-    console.log('Active stream set:', { url, type });
+    setLoading(true);
+    
+    try {
+      // Call the routing API to determine which service to use
+      const response = await fetch('/api/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          magnetUri: type === 'magnet' ? url : undefined,
+          m3u8Url: type === 'hls' ? url : undefined,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to process stream');
+      }
+      
+      const streamInfo: StreamInfo = await response.json();
+      console.log('Stream routing response:', streamInfo);
+      
+      // Show info about routing decision
+      if (streamInfo.message) {
+        console.log('Routing message:', streamInfo.message);
+      }
+      
+      // Set the stream with routing info
+      setActiveStream({ 
+        url: streamInfo.streamUrl, 
+        type,
+        streamInfo 
+      });
+      
+    } catch (err) {
+      console.error('=== PAGE: Error during submission ===', err);
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleError = (errorMsg: string) => {
@@ -52,17 +103,42 @@ export default function Home() {
       <main className="max-w-7xl mx-auto px-4 py-8">
         {!activeStream ? (
           <div className="mt-8">
-            <MagnetInputForm onSubmit={handleSubmit} />
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                <p className="mt-4 text-gray-600">Processing stream request...</p>
+              </div>
+            ) : (
+              <MagnetInputForm onSubmit={handleSubmit} />
+            )}
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="flex justify-center">
+            <div className="flex justify-between items-center">
               <button
                 onClick={handleReset}
                 className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
               >
                 ← Back to Input
               </button>
+              
+              {activeStream.streamInfo && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className={`inline-block w-2 h-2 rounded-full ${
+                      activeStream.streamInfo.service === 'nextjs' ? 'bg-green-500' : 'bg-blue-500'
+                    }`}></span>
+                    <span className="text-blue-900">
+                      {activeStream.streamInfo.message}
+                    </span>
+                    {activeStream.streamInfo.fileSizeFormatted && (
+                      <span className="text-blue-700">
+                        ({activeStream.streamInfo.fileSizeFormatted})
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {error && (
@@ -74,14 +150,34 @@ export default function Home() {
             {activeStream.type === 'magnet' && (
               <>
                 <TorrentPlayerBackend magnet={activeStream.url} onError={handleError} />
-                <DownloadButton type="torrent" torrentFiles={[]} />
+                {activeStream.streamInfo?.downloadUrl && (
+                  <div className="text-center">
+                    <a
+                      href={activeStream.streamInfo.downloadUrl}
+                      className="inline-block px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                      download
+                    >
+                      ⬇️ Download File
+                    </a>
+                  </div>
+                )}
               </>
             )}
 
             {activeStream.type === 'hls' && (
               <>
                 <HlsPlayer m3u8Url={activeStream.url} onError={handleError} />
-                <DownloadButton type="hls" hlsUrl={activeStream.url} />
+                {activeStream.streamInfo?.downloadUrl && (
+                  <div className="text-center">
+                    <a
+                      href={activeStream.streamInfo.downloadUrl}
+                      className="inline-block px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                      download
+                    >
+                      ⬇️ Download Stream
+                    </a>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -108,3 +204,4 @@ export default function Home() {
     </div>
   );
 }
+

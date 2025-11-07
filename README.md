@@ -15,10 +15,63 @@ A production-ready Next.js application for streaming torrents and HLS playlists 
 - 🎬 **Client-side torrent streaming** using WebTorrent (browser-based, WebRTC peers)
 - 📺 **HLS playback** with hls.js and quality selection
 - 💾 **Download functionality** for torrent files (with browser limitations warnings)
-- 🔒 **Security-first design** with input validation and sanitization
+- � **Smart routing** - Automatically routes large files to dedicated Node.js service
+- ⚡ **Scalable architecture** - Separate services for small and large file handling
+- �🔒 **Security-first design** with input validation and sanitization
 - ♿ **Accessible UI** with ARIA labels and keyboard navigation
 - 🧪 **Full test coverage** (unit + E2E tests)
 - 🚀 **Production-ready** with TypeScript, ESLint, Prettier
+
+## Architecture Overview
+
+This application uses a **dual-service architecture** that automatically routes streams based on file size:
+
+### Small Files (≤ Threshold)
+- Handled by **Next.js API routes**
+- Client-side WebTorrent streaming
+- Lightweight, serverless-friendly
+- Perfect for files under 500 MB (configurable)
+
+### Large Files (> Threshold)
+- Routed to **dedicated Node.js service**
+- Uses `webtorrent-hybrid` with full TCP/UDP support
+- Efficient memory management and HTTP range support
+- Handles large torrents (>500 MB) and intensive HLS remuxing
+
+### How It Works
+
+```
+User Request
+     ↓
+┌────────────────────────┐
+│  Next.js API Route     │
+│  /api/stream           │
+│  - Checks file size    │
+│  - Determines routing  │
+└────────────────────────┘
+     ↓
+┌────┴─────┐
+│ Size Check│
+└────┬─────┘
+     │
+     ├──→ Small File → Next.js API → Client-side WebTorrent
+     │
+     └──→ Large File → Node.js Service (port 8080)
+                       └→ Full seeding/streaming capabilities
+```
+
+### Configuration
+
+Set the threshold in `.env`:
+
+```bash
+# Files larger than this (in MB) will use the Node.js service
+STREAM_SWITCH_THRESHOLD_MB=500
+
+# Node.js service URL and API key
+NODE_STREAMER_URL=http://localhost:8080
+NODE_STREAMER_API_KEY=your-secure-api-key-here
+```
 
 ## Tech Stack
 
@@ -44,11 +97,17 @@ A production-ready Next.js application for streaming torrents and HLS playlists 
 # Install dependencies
 pnpm install
 
-# Copy environment variables (optional, for relay server)
+# Copy environment variables
 cp .env.example .env
+
+# Edit .env and set your API keys
+# Required for Node.js streaming service:
+# - NODE_STREAMER_API_KEY
 ```
 
 ### Development
+
+#### Start Next.js App Only (Small Files)
 
 ```bash
 # Start the development server
@@ -56,6 +115,30 @@ pnpm dev
 
 # Or use the script
 ./scripts/dev.sh
+```
+
+#### Start Node.js Streaming Service (Large Files)
+
+In a separate terminal:
+
+```bash
+# Make sure to set NODE_STREAMER_API_KEY in .env first
+./scripts/start-relay.sh
+
+# Or manually with ts-node
+NODE_STREAMER_API_KEY=your-key PORT=8080 ts-node server/large-streamer.ts
+```
+
+#### Run Both Services
+
+For development with both services:
+
+```bash
+# Terminal 1: Next.js app
+pnpm dev
+
+# Terminal 2: Node.js streaming service
+./scripts/start-relay.sh
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
@@ -73,25 +156,34 @@ pnpm start
 my-torrent-streamer/
 ├── src/
 │   ├── app/
+│   │   ├── api/
+│   │   │   └── stream/
+│   │   │       └── route.ts          # Routing logic for stream requests
 │   │   ├── components/
-│   │   │   ├── MagnetInputForm.tsx    # Input form with validation
-│   │   │   ├── TorrentPlayer.tsx      # WebTorrent player component
-│   │   │   ├── HlsPlayer.tsx          # HLS player with quality selector
-│   │   │   └── DownloadButton.tsx     # Download functionality
-│   │   ├── page.tsx                   # Main application page
-│   │   └── layout.tsx                 # Root layout
+│   │   │   ├── MagnetInputForm.tsx   # Input form with validation
+│   │   │   ├── TorrentPlayer.tsx     # WebTorrent player component
+│   │   │   ├── HlsPlayer.tsx         # HLS player with quality selector
+│   │   │   └── DownloadButton.tsx    # Download functionality
+│   │   ├── page.tsx                  # Main application page
+│   │   └── layout.tsx                # Root layout
+│   ├── lib/
+│   │   └── config.ts                 # Configuration utilities
 │   └── types/
-│       └── webtorrent.d.ts            # TypeScript definitions
+│       ├── webtorrent.d.ts           # TypeScript definitions
+│       ├── parse-torrent.d.ts        # Parse-torrent types
+│       └── webtorrent-hybrid.d.ts    # Hybrid types
 ├── server/
-│   └── torrent-relay.ts               # Optional server relay (TODO)
+│   └── large-streamer.ts             # Node.js service for large files
 ├── tests/
-│   ├── unit/                          # Unit tests
-│   └── e2e/                           # E2E tests
+│   ├── unit/                         # Unit tests
+│   │   ├── MagnetInputForm.test.tsx
+│   │   └── api-stream-route.test.ts  # Routing logic tests
+│   └── e2e/                          # E2E tests
 ├── scripts/
-│   ├── dev.sh                         # Development script
-│   └── start-relay.sh                 # Relay server script
+│   ├── dev.sh                        # Development script
+│   └── start-relay.sh                # Start Node.js service
 └── public/
-    └── test-fixtures/                 # Test fixtures
+    └── test-fixtures/                # Test fixtures
 ```
 
 ## Usage
@@ -146,24 +238,99 @@ pnpm exec playwright test --ui
 
 ## Deployment
 
-### Vercel (Client-Only)
+### Client-Only Deployment (Vercel)
+
+For small files only (no large-file Node.js service):
 
 ```bash
+# Deploy to Vercel
 pnpm add -g vercel
 vercel
+
+# Set environment variables in Vercel dashboard:
+# - STREAM_SWITCH_THRESHOLD_MB=500
 ```
 
-### Docker (with Server Relay)
+### Full Deployment (Docker with Both Services)
+
+For production with both Next.js and Node.js streaming service:
+
+#### Docker Compose
+
+```yaml
+version: '3.8'
+
+services:
+  nextjs:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_STREAMER_URL=http://node-streamer:8080
+      - NODE_STREAMER_API_KEY=${NODE_STREAMER_API_KEY}
+      - STREAM_SWITCH_THRESHOLD_MB=500
+
+  node-streamer:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamer
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_STREAMER_API_KEY=${NODE_STREAMER_API_KEY}
+      - PORT=8080
+```
+
+#### Dockerfile (Next.js)
 
 ```dockerfile
 FROM node:20-alpine
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+COPY package*.json pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
 COPY . .
-RUN npm run build
-EXPOSE 3000 3001
-CMD ["npm", "start"]
+RUN pnpm build
+EXPOSE 3000
+CMD ["pnpm", "start"]
+```
+
+#### Dockerfile.streamer (Node.js Service)
+
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
+COPY server/ ./server/
+COPY src/types/ ./src/types/
+COPY tsconfig.json ./
+RUN pnpm add -D typescript ts-node
+EXPOSE 8080
+CMD ["pnpm", "exec", "ts-node", "server/large-streamer.ts"]
+```
+
+### Deployment Architecture Recommendations
+
+1. **Next.js App**: Deploy to Vercel, AWS Amplify, or similar
+2. **Node.js Service**: Deploy to:
+   - AWS EC2/ECS with higher bandwidth
+   - DigitalOcean Droplet with dedicated resources
+   - Self-hosted VPS with good network connectivity
+3. **Use NGINX**: Reverse proxy for TLS and rate limiting
+4. **Monitor**: Track bandwidth usage and peer counts
+
+### Environment Variables for Production
+
+```bash
+# Next.js App
+NEXT_PUBLIC_API_URL=https://your-domain.com
+NODE_STREAMER_URL=https://streamer.your-domain.com
+NODE_STREAMER_API_KEY=your-secure-key
+STREAM_SWITCH_THRESHOLD_MB=500
+
+# Node.js Service
+NODE_STREAMER_API_KEY=your-secure-key
+PORT=8080
 ```
 
 ## Browser Compatibility
