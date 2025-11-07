@@ -1,5 +1,6 @@
 /** @type {import('jest').Config} */
 const config = {
+  preset: 'ts-jest',
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   moduleNameMapper: {
@@ -12,6 +13,13 @@ const config = {
     'src/**/*.{js,jsx,ts,tsx}',
     '!src/**/*.d.ts',
   ],
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', {
+      tsconfig: {
+        jsx: 'react-jsx',
+      },
+    }],
+  },
 };
 
 module.exports = config;

@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test": "jest",
@@ -22,6 +22,9 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@babel/preset-env": "^7.28.5",
+    "@babel/preset-react": "^7.28.5",
+    "@babel/preset-typescript": "^7.28.5",
     "@playwright/test": "^1.56.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
@@ -38,6 +41,7 @@
     "lint-staged": "^16.2.6",
     "prettier": "^3.6.2",
     "tailwindcss": "^4",
+    "ts-jest": "^29.4.5",
     "typescript": "^5"
   }
 }
