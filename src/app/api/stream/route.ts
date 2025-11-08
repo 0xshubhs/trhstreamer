@@ -96,17 +96,12 @@ async function forwardToNodeService(
 ): Promise<StreamResponse> {
   const config = getStreamConfig();
   
-  if (!config.nodeStreamerApiKey) {
-    throw new Error('Node.js streaming service not configured');
-  }
-  
   const payload = magnetUri ? { magnetUri } : { m3u8Url };
   
   const response = await fetch(`${config.nodeStreamerUrl}/api/add-stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': config.nodeStreamerApiKey,
     },
     body: JSON.stringify(payload),
   });
@@ -175,32 +170,43 @@ export async function POST(request: NextRequest) {
       
       const metadata = await getTorrentMetadata(magnetUri);
       
-      // If we don't have size info, we'll need to use the relay to get it
-      // For now, if size is 0, assume it's potentially large and route to Node service
+      // If we don't have size info or file is large, use client-side streaming
+      // Server-side torrent streaming is currently disabled due to native module issues
       if (metadata.size === 0) {
-        console.log('Size unknown - routing to Node.js service for safety');
-        const response = await forwardToNodeService(magnetUri);
+        console.log('Size unknown - using client-side streaming');
+        const response = handleViaNextjs(
+          metadata.infoHash,
+          metadata.name,
+          metadata.size
+        );
         return NextResponse.json(response);
       }
       
-      // Check threshold
+      // Check threshold - for very large files, use client-side WebTorrent
       if (shouldUseNodeService(metadata.size)) {
         console.log(
-          `Large file detected (${formatBytes(metadata.size)}) - routing to Node.js service`
+          `Large file detected (${formatBytes(metadata.size)}) - will use client-side WebTorrent`
         );
-        const response = await forwardToNodeService(magnetUri);
+        const response = handleViaNextjs(
+          metadata.infoHash,
+          metadata.name,
+          metadata.size
+        );
+        // Override the message to indicate client-side streaming
+        response.message = `Large file (${formatBytes(metadata.size)}) - using client-side WebTorrent for better performance`;
         return NextResponse.json(response);
       }
       
-      // Handle via Next.js
+      // Handle via Next.js server-side streaming
       console.log(
-        `Small file detected (${formatBytes(metadata.size)}) - handling via Next.js`
+        `Small file detected (${formatBytes(metadata.size)}) - using server-side streaming`
       );
       const response = handleViaNextjs(
         metadata.infoHash,
         metadata.name,
         metadata.size
       );
+      response.message = `Small file (${formatBytes(metadata.size)}) - using server-side streaming`;
       return NextResponse.json(response);
     }
     
