@@ -152,10 +152,15 @@ export default function Home() {
 
             {activeStream.type === 'magnet' && (
               <>
-                {/* Use server-side streaming for LARGE files (>500MB), client-side for SMALL files */}
+                {/* 
+                  Routing logic:
+                  - Large files (>500MB) → Server-side (TorrentPlayerBackend)
+                  - Small files (<500MB) → Client-side (TorrentPlayer) 
+                  - Unknown size (0) → Server-side (safer default, server will determine size)
+                */}
                 {activeStream.streamInfo?.service === 'nextjs' && 
-                 activeStream.streamInfo?.fileSize && 
-                 activeStream.streamInfo.fileSize > 500 * 1024 * 1024 ? (
+                 activeStream.streamInfo?.fileSize !== undefined &&
+                 (activeStream.streamInfo.fileSize === 0 || activeStream.streamInfo.fileSize > 500 * 1024 * 1024) ? (
                   <>
                     <div className="max-w-4xl mx-auto mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                       <div className="flex items-center gap-2 text-sm">
@@ -165,7 +170,10 @@ export default function Home() {
                         </span>
                       </div>
                       <p className="text-xs text-green-700 mt-1 ml-4">
-                        Large file detected - using dedicated server with more resources for optimal performance
+                        {activeStream.streamInfo.fileSize === 0 
+                          ? 'File size unknown - server will determine size from peers and handle streaming'
+                          : 'Large file detected - using dedicated server with more resources for optimal performance'
+                        }
                       </p>
                     </div>
                     <TorrentPlayerBackend magnet={activeStream.originalUrl} onError={handleError} />

@@ -170,15 +170,16 @@ export async function POST(request: NextRequest) {
       
       const metadata = await getTorrentMetadata(magnetUri);
       
-      // If we don't have size info or file is large, use client-side streaming
-      // Server-side torrent streaming is currently disabled due to native module issues
+      // If we don't have size info (magnet links don't include it), default to server-side
+      // The server will fetch metadata from peers and can handle any file size
       if (metadata.size === 0) {
-        console.log('Size unknown - using client-side streaming');
+        console.log('Size unknown (magnet link) - defaulting to server-side streaming');
         const response = handleViaNextjs(
           metadata.infoHash,
           metadata.name,
           metadata.size
         );
+        response.message = 'File size unknown - using server-side streaming (will determine size from peers)';
         return NextResponse.json(response);
       }
       
