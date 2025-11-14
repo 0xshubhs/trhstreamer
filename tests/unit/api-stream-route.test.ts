@@ -26,7 +26,6 @@ describe('/api/stream routing logic', () => {
       streamSwitchThresholdMB: 500,
       streamSwitchThresholdBytes: 500 * 1024 * 1024,
       nodeStreamerUrl: 'http://localhost:8080',
-      nodeStreamerApiKey: 'test-api-key',
       relayApiKey: 'relay-key',
     });
   });

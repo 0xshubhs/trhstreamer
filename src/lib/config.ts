@@ -10,8 +10,6 @@ export interface StreamConfig {
   streamSwitchThresholdBytes: number;
   /** URL of the dedicated Node.js streaming service */
   nodeStreamerUrl: string;
-  /** API key for Node.js streaming service */
-  nodeStreamerApiKey: string;
   /** Relay API key for torrent relay */
   relayApiKey?: string;
 }
@@ -32,19 +30,11 @@ export function getStreamConfig(): StreamConfig {
   }
 
   const nodeStreamerUrl = process.env.NODE_STREAMER_URL || 'http://localhost:8080';
-  const nodeStreamerApiKey = process.env.NODE_STREAMER_API_KEY || '';
-
-  if (!nodeStreamerApiKey) {
-    console.warn(
-      'Warning: NODE_STREAMER_API_KEY not set. Node.js streaming service will not be available.'
-    );
-  }
 
   return {
     streamSwitchThresholdMB: thresholdMB,
     streamSwitchThresholdBytes: thresholdMB * 1024 * 1024,
     nodeStreamerUrl,
-    nodeStreamerApiKey,
     relayApiKey: process.env.RELAY_API_KEY,
   };
 }

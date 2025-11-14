@@ -6,6 +6,9 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
+    "start:server": "tsx server/large-streamer.ts",
+    "build:server": "tsc -p tsconfig.build.json",
+    "start:server-js": "node --experimental-specifier-resolution=node dist/large-streamer.js",
     "lint": "eslint",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -17,6 +20,8 @@
     "buffer": "^6.0.3",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
     "hls.js": "^1.6.14",
     "next": "16.0.1",
     "parse-torrent": "^11.0.19",
@@ -52,6 +57,7 @@
     "prettier": "^3.6.2",
     "tailwindcss": "^4",
     "ts-jest": "^29.4.5",
+    "tsx": "^4.20.6",
     "typescript": "^5",
     "webpack": "^5.102.1"
   }
