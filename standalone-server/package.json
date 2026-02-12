@@ -1,7 +1,7 @@
 {
   "name": "torrent-hls-streaming-server",
   "version": "1.0.0",
-  "description": "Independent HLS proxy and torrent streaming server",
+  "description": "Streaming server - torrent engine, HLS proxy, direct URL proxy",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -25,7 +25,8 @@
     "express": "^5.1.0",
     "cors": "^2.8.5",
     "helmet": "^8.1.0",
-    "express-rate-limit": "^8.2.1"
+    "express-rate-limit": "^8.2.1",
+    "torrent-stream": "^1.2.1"
   },
   "devDependencies": {
     "@types/node": "^20.17.10",

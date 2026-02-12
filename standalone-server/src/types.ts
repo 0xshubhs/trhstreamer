@@ -1,46 +1,29 @@
-export interface StreamInfo {
-  id: string;
-  type: 'torrent' | 'hls';
-  fileSize: number;
-  fileName: string;
-  startTime: number;
-  hls?: HlsInfo;
-  torrent?: any | null;
-  magnetUri?: string;
-  m3u8Url?: string;
+export interface TorrentFile {
+  name: string;
+  length: number;
+  createReadStream(opts?: { start: number; end: number }): NodeJS.ReadableStream;
+  select(): void;
+  deselect(): void;
 }
 
-export interface HlsInfo {
-  baseUrl: string;
-  lastAccess: number;
-}
-
-export interface AddStreamRequest {
-  magnetUri?: string;
-  m3u8Url?: string;
-}
-
-export interface AddStreamResponse {
-  id: string;
-  type: 'hls' | 'torrent';
-  fileName: string;
-  fileSize: number;
-  fileSizeFormatted: string;
-  master?: string;
-  proxyBase?: string;
-  message: string;
+export interface TorrentEngine {
+  files: TorrentFile[];
+  infoHash: string;
+  torrent: { name: string; length: number };
+  swarm: {
+    downloaded: number;
+    wires: unknown[];
+    downloadSpeed(): number;
+  };
+  on(event: 'ready', cb: () => void): void;
+  on(event: 'error', cb: (err: Error) => void): void;
+  on(event: 'idle', cb: () => void): void;
+  destroy(): void;
 }
 
 export interface HealthResponse {
-  status: 'ok' | 'error';
+  status: 'ok';
   activeStreams: number;
   uptime: number;
   memory: NodeJS.MemoryUsage;
-  hlsIds: string[];
-}
-
-export interface ErrorResponse {
-  error: string;
-  suggestion?: string;
-  infoHash?: string;
 }

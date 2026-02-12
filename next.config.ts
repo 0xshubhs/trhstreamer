@@ -4,7 +4,7 @@ import webpack from "webpack";
 const nextConfig: NextConfig = {
   webpack: (config, { isServer }) => {
     if (!isServer) {
-      // Define globals that WebTorrent expects
+      // Only needed for the ClientTorrentPlayer fallback (dynamically imported)
       config.plugins.push(
         new webpack.ProvidePlugin({
           process: 'process/browser',
@@ -15,7 +15,6 @@ const nextConfig: NextConfig = {
         })
       );
 
-      // Exclude native modules from client-side bundle
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
@@ -26,20 +25,18 @@ const nextConfig: NextConfig = {
         buffer: require.resolve('buffer/'),
         process: require.resolve('process/browser'),
       };
-      
-      // Ignore node-datachannel native binding on client
+
       config.externals = config.externals || [];
       config.externals.push({
         'node-datachannel': 'commonjs node-datachannel',
       });
 
-      // Suppress common WebTorrent warnings
       config.ignoreWarnings = [
         /Critical dependency: the request of a dependency is an expression/,
         /Critical dependency: require function is used in a way/,
       ];
     }
-    
+
     return config;
   },
 };
