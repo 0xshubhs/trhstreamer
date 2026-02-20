@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { Readable } from 'stream';
+import { spawn } from 'child_process';
 import os from 'os';
 import path from 'path';
 import type { StreamManager } from '../stream-manager.js';
@@ -126,6 +127,57 @@ export function createTorrentRouter(streamManager: StreamManager): Router {
       readable.pipe(res);
       readable.on('error', () => { if (!res.headersSent) res.status(500).end(); });
     }
+  });
+
+  // GET /api/torrent/transcode/:id/:fileIndex
+  // Transcodes any video format to H.264/AAC fragmented MP4 for browser playback.
+  // Used for MKV/AVI/x265 files that browsers cannot decode natively.
+  router.get('/transcode/:id/:fileIndex', (req: Request, res: Response) => {
+    const stream = streamManager.get(req.params.id);
+    if (!stream || stream.type !== 'torrent' || !stream.engine) {
+      res.status(404).json({ error: 'Torrent stream not found' });
+      return;
+    }
+
+    const fileIdx = parseInt(req.params.fileIndex, 10);
+    const file = stream.engine.files[fileIdx];
+    if (!file) {
+      res.status(404).json({ error: 'File not found in torrent' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Cache-Control', 'no-store');
+
+    const ffmpeg = spawn('ffmpeg', [
+      '-fflags', 'nobuffer',
+      '-i', 'pipe:0',
+      '-map', '0:v:0',
+      '-map', '0:a:0?',
+      '-vcodec', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '23',
+      '-acodec', 'aac',
+      '-b:a', '192k',
+      '-movflags', 'frag_keyframe+empty_moov+faststart',
+      '-f', 'mp4',
+      'pipe:1',
+    ]);
+
+    const torrentStream = file.createReadStream({ start: 0, end: file.length - 1 }) as unknown as Readable;
+    torrentStream.pipe(ffmpeg.stdin);
+
+    ffmpeg.stdout.pipe(res);
+    ffmpeg.stderr.on('data', () => { /* suppress */ });
+
+    const cleanup = () => {
+      torrentStream.destroy();
+      ffmpeg.kill('SIGKILL');
+    };
+    req.on('close', cleanup);
+    ffmpeg.on('error', () => {
+      if (!res.headersSent) res.status(500).end();
+    });
   });
 
   return router;

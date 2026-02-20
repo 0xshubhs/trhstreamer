@@ -31,6 +31,15 @@ export default function ServerTorrentPlayer({ magnetUri, serverUrl, apiKey, onEr
   const [meta, setMeta] = useState<TorrentMeta | null>(null);
   const [selectedFile, setSelectedFile] = useState(0);
 
+  function setStreamSource(id: string, fileIndex: number, fileName: string) {
+    if (!videoRef.current) return;
+    const params = apiKey ? `?apiKey=${encodeURIComponent(apiKey)}` : '';
+    const needsTranscode = /\.(mkv|avi|mov|flv|wmv|m2ts|m4v|ts)$/i.test(fileName);
+    const endpoint = needsTranscode ? 'transcode' : 'stream';
+    videoRef.current.src = `${serverUrl}/api/torrent/${endpoint}/${id}/${fileIndex}${params}`;
+    videoRef.current.load();
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -56,7 +65,7 @@ export default function ServerTorrentPlayer({ magnetUri, serverUrl, apiKey, onEr
         log.debug('Torrent metadata received:', data.name);
         setMeta(data);
 
-        const playable = data.files.findIndex((f) => /\.(mp4|webm|ogg)$/i.test(f.name));
+        const playable = data.files.findIndex((f) => /\.(mp4|webm|ogg|mkv|mov|avi|flv|ts)$/i.test(f.name));
         if (playable === -1) {
           onError('No playable video file found in torrent');
           setLoading(false);
@@ -64,7 +73,7 @@ export default function ServerTorrentPlayer({ magnetUri, serverUrl, apiKey, onEr
         }
 
         setSelectedFile(playable);
-        setStreamSource(data.id, playable);
+        setStreamSource(data.id, playable, data.files[playable].name);
         setLoading(false);
       } catch (err) {
         if (!cancelled) {
@@ -74,25 +83,15 @@ export default function ServerTorrentPlayer({ magnetUri, serverUrl, apiKey, onEr
       }
     }
 
-    function setStreamSource(id: string, fileIndex: number) {
-      if (!videoRef.current) return;
-      const params = apiKey ? `?apiKey=${encodeURIComponent(apiKey)}` : '';
-      videoRef.current.src = `${serverUrl}/api/torrent/stream/${id}/${fileIndex}${params}`;
-      videoRef.current.load();
-    }
-
     init();
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [magnetUri, serverUrl, apiKey, onError]);
 
   function handleFileSelect(index: number) {
     if (!meta) return;
     setSelectedFile(index);
-    const params = apiKey ? `?apiKey=${encodeURIComponent(apiKey)}` : '';
-    if (videoRef.current) {
-      videoRef.current.src = `${serverUrl}/api/torrent/stream/${meta.id}/${index}${params}`;
-      videoRef.current.load();
-    }
+    setStreamSource(meta.id, index, meta.files[index].name);
   }
 
   const formatBytes = (bytes: number): string => {

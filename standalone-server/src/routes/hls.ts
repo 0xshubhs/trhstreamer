@@ -74,15 +74,15 @@ export function createHlsRouter(streamManager: StreamManager): Router {
     }
   });
 
-  // GET /api/hls/:id/segment/*
-  router.get('/:id/segment/*', async (req: Request, res: Response) => {
+  // GET /api/hls/:id/segment/*path
+  router.get('/:id/segment/*path', async (req: Request, res: Response) => {
     const stream = streamManager.get(req.params.id);
     if (!stream || stream.type !== 'hls' || !stream.hlsBaseUrl) {
       res.status(404).json({ error: 'HLS stream not found' });
       return;
     }
 
-    const suffix = (req.params as Record<string, string>)[0];
+    const suffix = req.params.path;
     const targetUrl = new URL(suffix, stream.hlsBaseUrl).toString();
 
     try {
