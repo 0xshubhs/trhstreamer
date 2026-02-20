@@ -35,13 +35,18 @@ export function createTorrentRouter(streamManager: StreamManager): Router {
     }
 
     const id = generateId();
+    // Use infoHash as download directory so pieces survive server restarts.
+    // Falls back to random id if infoHash can't be parsed (shouldn't happen).
+    const downloadDir = infoHashMatch
+      ? path.join(os.tmpdir(), 'trhstreamer', infoHashMatch[1].toLowerCase())
+      : path.join(os.tmpdir(), 'trhstreamer', id);
 
     try {
       const engine: TorrentEngine = await waitForReady(
         torrentStream(magnetUri, {
           connections: 100,
           uploads: 10,
-          path: path.join(os.tmpdir(), 'trhstreamer', id),
+          path: downloadDir,
           dht: true,
           tracker: true,
         }),
@@ -146,26 +151,62 @@ export function createTorrentRouter(streamManager: StreamManager): Router {
       return;
     }
 
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Cache-Control', 'no-store');
+    // Send headers immediately so browser doesn't timeout waiting for ffmpeg startup.
+    // flushHeaders() actually writes the status line + headers to the socket right now.
+    res.writeHead(200, {
+      'Content-Type': 'video/mp4',
+      'Cache-Control': 'no-store',
+    });
+    res.flushHeaders();
 
-    const ffmpeg = spawn('ffmpeg', [
-      '-fflags', 'nobuffer',
-      '-i', 'pipe:0',
-      '-map', '0:v:0',
-      '-map', '0:a:0?',
-      '-vcodec', 'libx264',
-      '-preset', 'veryfast',
-      '-crf', '23',
-      '-acodec', 'aac',
-      '-b:a', '192k',
-      '-movflags', 'frag_keyframe+empty_moov+faststart',
-      '-f', 'mp4',
-      'pipe:1',
-    ]);
+    // Detect if input is likely already H.264 (mp4/m4v) - remux instead of re-encode
+    const isNativeMp4 = /\.(mp4|m4v)$/i.test(file.name);
+
+    const ffmpegArgs = isNativeMp4
+      ? [
+          // Fast remux: copy video codec (H.264 stays H.264), re-encode audio to AAC stereo.
+          // Fragmented output puts moov at start so browser plays immediately.
+          '-fflags', 'nobuffer+discardcorrupt',
+          '-probesize', '1000000',
+          '-analyzeduration', '1000000',
+          '-i', 'pipe:0',
+          '-map', '0:v:0',
+          '-map', '0:a:0?',
+          '-vcodec', 'copy',
+          '-acodec', 'aac',
+          '-ac', '2',
+          '-b:a', '192k',
+          '-movflags', 'frag_keyframe+empty_moov',
+          '-f', 'mp4',
+          'pipe:1',
+        ]
+      : [
+          // Full transcode: converts H.265/MKV/AVI/etc → H.264 fragmented MP4
+          '-fflags', 'nobuffer+discardcorrupt',
+          '-probesize', '1000000',
+          '-analyzeduration', '1000000',
+          '-i', 'pipe:0',
+          '-map', '0:v:0',
+          '-map', '0:a:0?',
+          '-vcodec', 'libx264',
+          '-preset', 'veryfast',
+          '-crf', '23',
+          '-pix_fmt', 'yuv420p',
+          '-profile:v', 'high',
+          '-level', '4.1',
+          '-acodec', 'aac',
+          '-ac', '2',
+          '-b:a', '192k',
+          '-movflags', 'frag_keyframe+empty_moov',
+          '-f', 'mp4',
+          'pipe:1',
+        ];
+
+    const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
     const torrentStream = file.createReadStream({ start: 0, end: file.length - 1 }) as unknown as Readable;
     torrentStream.pipe(ffmpeg.stdin);
+    ffmpeg.stdin.on('error', () => { /* suppress EPIPE if ffmpeg closes stdin early */ });
 
     ffmpeg.stdout.pipe(res);
     ffmpeg.stderr.on('data', () => { /* suppress */ });
@@ -175,9 +216,7 @@ export function createTorrentRouter(streamManager: StreamManager): Router {
       ffmpeg.kill('SIGKILL');
     };
     req.on('close', cleanup);
-    ffmpeg.on('error', () => {
-      if (!res.headersSent) res.status(500).end();
-    });
+    ffmpeg.on('error', () => { /* headers already sent, nothing to do */ });
   });
 
   return router;

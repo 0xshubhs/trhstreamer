@@ -31,13 +31,17 @@ export default function ServerTorrentPlayer({ magnetUri, serverUrl, apiKey, onEr
   const [meta, setMeta] = useState<TorrentMeta | null>(null);
   const [selectedFile, setSelectedFile] = useState(0);
 
-  function setStreamSource(id: string, fileIndex: number, fileName: string) {
+  function setStreamSource(id: string, fileIndex: number) {
     if (!videoRef.current) return;
     const params = apiKey ? `?apiKey=${encodeURIComponent(apiKey)}` : '';
-    const needsTranscode = /\.(mkv|avi|mov|flv|wmv|m2ts|m4v|ts)$/i.test(fileName);
-    const endpoint = needsTranscode ? 'transcode' : 'stream';
-    videoRef.current.src = `${serverUrl}/api/torrent/${endpoint}/${id}/${fileIndex}${params}`;
+    // Always use transcode - outputs fragmented MP4 with moov at the START.
+    // Without this, MP4 files with moov at the end require the browser to download
+    // the entire file before playback can begin.
+    videoRef.current.src = `${serverUrl}/api/torrent/transcode/${id}/${fileIndex}${params}`;
     videoRef.current.load();
+    // Explicitly call play() - autoPlay attribute may be blocked if the user gesture
+    // (clicking "Stream") expired during the async metadata fetch
+    videoRef.current.play().catch(() => { /* user hasn't interacted yet, ignore */ });
   }
 
   useEffect(() => {
@@ -73,7 +77,7 @@ export default function ServerTorrentPlayer({ magnetUri, serverUrl, apiKey, onEr
         }
 
         setSelectedFile(playable);
-        setStreamSource(data.id, playable, data.files[playable].name);
+        setStreamSource(data.id, playable);
         setLoading(false);
       } catch (err) {
         if (!cancelled) {
@@ -91,7 +95,7 @@ export default function ServerTorrentPlayer({ magnetUri, serverUrl, apiKey, onEr
   function handleFileSelect(index: number) {
     if (!meta) return;
     setSelectedFile(index);
-    setStreamSource(meta.id, index, meta.files[index].name);
+    setStreamSource(meta.id, index);
   }
 
   const formatBytes = (bytes: number): string => {
