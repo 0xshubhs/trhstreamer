@@ -212,6 +212,10 @@ async def _poll_torrent(entry: TorrentEntry):
             "infoHash": str(ti.info_hashes().v1),
         })
 
+        # Signal ready immediately — the stream endpoint waits piece-by-piece.
+        # No need to buffer X% first; piece_priority ensures ordered delivery.
+        await _broadcast(entry, {"type": "ready"})
+
     if entry.info is None:
         return
 
@@ -223,10 +227,6 @@ async def _poll_torrent(entry: TorrentEntry):
         "uploadSpeed": s.upload_rate,
         "numPeers": s.num_peers,
     })
-
-    # ── signal ready once >1% downloaded (enough to start streaming) ────────
-    if s.progress > 0.01 and "ready" not in entry.status_cache:
-        await _broadcast(entry, {"type": "ready"})
 
 
 def _evict(stream_id: str):
